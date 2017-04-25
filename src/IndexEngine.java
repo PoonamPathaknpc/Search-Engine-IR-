@@ -1,4 +1,5 @@
 import java.io.*;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.Map.Entry;
 
@@ -12,26 +13,35 @@ public class IndexEngine {
 	public static Map<String, LemmaT> tempIndexstem = new TreeMap<String, LemmaT>();
 	public static Map<String, LemmaT> termIndex = new TreeMap<String, LemmaT>();//version2
 	public static Map<String, LemmaT> tempIndex = new TreeMap<String, LemmaT>();	
+	public static Map<Integer, String> docHeadline = new TreeMap<Integer, String>(); // doc headlines...
 	public static Map<String,TermDoc> UncompressedindexListV1 = new TreeMap<String,TermDoc>();
 	public static Map<String,TermDoc> UncompressedindexListV2 = new TreeMap<String,TermDoc>();
 	public static Map<Integer, Document> documents = new TreeMap<Integer, Document>();
 	public static long timeelapsed=0 ,timeelapsed1=0,timeelapsed2=0,timeelapsed3=0,timeelapsed4=0;
+	public static int Collectionsize =0 , avgdoclen = 0;
+	public static HashMap<String , HashMap<Integer, BigDecimal>> RelevantDocs = new HashMap<String , HashMap<Integer, BigDecimal>>();
 
 	public IndexEngine() {}
 	
 	
 	public static void main(String[] args) {
 		
+		
 		IndexCompression indcompression = new IndexCompression();
+		
 		File file = new File(".");		
 		File funcompV1 = new File(file.getName() , "UncompressedIndexV1.txt");
 		File funcompV2 = new File(file.getName() ,"UncompressedIndexV2.txt");
 		File fcompV1 = new File(file.getName() ,"CompressedIndexV1.txt");
 		File fcompV2 = new File(file.getName() , "CompressedIndexV2.txt");
 		File progdesc = new File(file.getName() ,"ProgramStatistics.txt");
+		File Results = new File(file.getName() ,"RankedDocumentInformation.txt");
 		
-		//File f  = new File("E:\\documents\\UTDallasMasters\\Semester-2\\IR\\ppp160130_Assignment2");
-		File f  = new File("//people//cs//s//sanda//cs6322");
+		File f  = new File("E:\\documents\\UTDallasMasters\\Semester-2\\IR\\ppp160130_Assignment2");
+		File QueryFile  = new File("E:\\documents\\UTDallasMasters\\Semester-2\\IR\\ppp160130_Assignment3\\hw3.queries");
+		//File f  = new File("//people//cs//s//sanda//cs6322");
+		//File QueryFile  = new File("//people//cs//s//sanda//cs6322//hw3.queries");
+		
 		
 		// call the process to tokenize, lemmatize and index the whole cranfield collection without compression..
 		long starttime = System.currentTimeMillis();		
@@ -42,13 +52,13 @@ public class IndexEngine {
 	    
 		
 		// printing uncompressed list version 1	    		
-	    WritetoFile(1,funcompV1);		
-	    System.out.println("Uncompressed version 1 generated");
+	    //WritetoFile(1,funcompV1);		
+	    //System.out.println("Uncompressed version 1 generated");
 	    
 	    
 		// printing uncompressed list version 2	    		
-	    WritetoFile(2,funcompV2);		
-		System.out.println("Uncompressed version 2 generated");
+	    //WritetoFile(2,funcompV2);		
+		//System.out.println("Uncompressed version 2 generated");
 		
 	    //compressing the index as per version1 and printing it..
 		long starttime1 = System.currentTimeMillis();
@@ -65,10 +75,17 @@ public class IndexEngine {
 	    timeelapsed4  = endtime2 - starttime2;
 	    System.out.println("compressed version 2 generated");
 	   
-	    
 	    // Enter the Statistics..
-	    FileWriter fw;
+	    FileWriter fw,rfw;
 		try {
+			
+			rfw = new FileWriter(Results);
+			BufferedWriter brfw = new BufferedWriter(rfw);
+			RelevanceCalculation calc = new  RelevanceCalculation();	    
+		    calc.processQuery(QueryFile,brfw);
+		    
+		    brfw.close();
+		    
 			fw = new FileWriter(progdesc);
 			BufferedWriter bfw = new BufferedWriter(fw);
 			bfw.write("*************Program Statistics************");
@@ -447,19 +464,20 @@ public class IndexEngine {
 		    bfw.write("Cranfield" + new Integer(DocIddoclen).toString() + " max doclen: " + maxdoclen); 
 		    bfw.newLine();
 		    
-		  bfw.close();  
+		  bfw.close();
+		    
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	    
-	    
+	  
 	  
 	}
 
 	public static void processCranfield(File f) {
 		
-		int documentID=0, maxtf=0;
+		int documentID=0, maxtf=0 , totaldoclen=0;
 		Stemmer Stem = new Stemmer();
 		IndexConstruction indexlist  = new IndexConstruction();
 		
@@ -476,7 +494,7 @@ public class IndexEngine {
 				 File[] subFiles = files[k].listFiles(); 	
 			      while(j<subFiles.length)
 			      {
-			    	  
+			    	  Collectionsize++; // to be used in relevance model...
 			   	    //System.out.println("the file is :: " + subFiles[j].getName());
 			         FileReader fw = new FileReader(subFiles[j]);			  
 			         int avgcount=0;
@@ -485,6 +503,7 @@ public class IndexEngine {
 			         Document doc = new Document();			         
 			         Document docstem = new Document();
 			         tempIndex.clear();
+			         String headline ="";
 			          // creating a temporary index for each doc..
 			         while((line = bfr.readLine()) != null)
 				     {
@@ -495,10 +514,23 @@ public class IndexEngine {
 				        	  documentID = Integer.parseInt(bfr.readLine());
 				        	  doc.docid = documentID;
 				        	  docstem.docid = documentID;
+				        	  
 				        	 // System.out.println("document id :: " + documentID);  
 				         }
-				         	
-				    
+				       
+				      
+				    if(line.equals("<TITLE>"))
+				    { 
+				    	String title = bfr.readLine();
+				    	while(!title.equals("</TITLE>"))
+				    		 {				    		  
+				    		  headline += title ;
+				    	      title = bfr.readLine();
+				    	      }
+				       docHeadline.put(doc.docid, headline);
+				    }	
+				    	
+				      
 				     //System.out.println(line);
 				     if (!((line.startsWith("<"))))
 				     {
@@ -576,7 +608,9 @@ public class IndexEngine {
 					    }	
 				   }				
 				
-			    // after a document is parsed, storing the information then in the list of term doc..v2
+			         
+			    // after a document is parsed, storing the information then in the list of term doc..v1
+			    totaldoclen+=doc.doclen;
 			    long starttime3 = System.currentTimeMillis();    
 		        for(Entry<String, LemmaT> entry : tempIndex.entrySet())
 				{	    	
@@ -586,7 +620,7 @@ public class IndexEngine {
 			        	termdoc.dF +=1;
 			        	termdoc.tf=entry.getValue().tf;
 			        	for(Entry<Integer, Integer> entry1 : entry.getValue().PostingF.entrySet())									    	
-			        		termdoc.PostingF.put(docstem, entry1.getValue());
+			        		termdoc.PostingF.put(doc, entry1.getValue());
 			        	UncompressedindexListV1.put(entry.getKey(), termdoc);
 			         }
 			         
@@ -606,7 +640,7 @@ public class IndexEngine {
 		        
 		        
 		        
-		        // after a document is parsed, storing the information then in the list of term doc.. v1    			 
+		        // after a document is parsed, storing the information then in the list of term doc.. v2   			 
     			long starttime4 = System.currentTimeMillis();  
 		        for(Entry<String, LemmaT> entry : tempIndexstem.entrySet())
 				{
@@ -652,6 +686,7 @@ public class IndexEngine {
 				e.printStackTrace();
 	      }
 		
+		avgdoclen = totaldoclen/Collectionsize;
 		
 	}
 	
